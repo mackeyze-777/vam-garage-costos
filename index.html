@@ -155,7 +155,7 @@ const TABS={
   insumos:741779892, precios:131451656, margenes:1352505801,
   servicios:[
     {name:'Vestiduras',          gid:818364407, cat:'Interior',   precioRow:'Vestiduras manteniemto'},
-    {name:'Vestiduras + Pulido', gid:524982998, cat:'Pulido',     precioRow:'Pulido + Vestiduras + motor'},
+    {name:'Vestiduras + Pulido', gid:524982998, cat:'Adicionales',precioRow:'Pulido + Vestiduras + motor'},
     {name:'Pulido 3-1',          gid:694418411, cat:'Pulido',     precioRow:'Pulido 3-1'},
     {name:'Lavado básico',       gid:1954074490,cat:'Adicionales',precioRow:'Lavado'},
     {name:'Faros',               gid:1535678238,cat:'Adicionales',precioRow:'Faros'},
@@ -308,8 +308,8 @@ function categoryOf(name){
   const n=norm(name);
   const sets={
     Interior:['vestiduras manteniemto','vestiduras avanzado'],
-    Pulido:['pulido 3-1','pulido + vestiduras + motor'],
-    Adicionales:['lavado','faros','motor','cera + descontaminacion','lluvia acida','correcion de pintura'],
+    Pulido:['pulido 3-1'],
+    Adicionales:['lavado','faros','motor','cera + descontaminacion','lluvia acida','correcion de pintura','pulido + vestiduras + motor'],
     Ceramico:['ceramico mate 2 anos','1 paso + ceramico 1 ano','2 paso + ceramico 1 ano','1 paso + 3 anos','2 pasos + 3 anos','2 pasos + 5 anos','ceramico a piel','ceramico a plasticos','mantenimiento ceramico']
   };
   for(const k in sets){ if(sets[k].some(x=>norm(x)===n)) return k==='Ceramico'?'Cer\u00e1mico':k; }
