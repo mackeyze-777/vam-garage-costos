@@ -86,6 +86,13 @@
   .vpc-lbl.hl{color:var(--accent);}
   .vpc-val{font-size:13px;font-weight:700;}
   .vpc-val.hl{color:var(--accent);font-weight:800;}
+  .vpc-gan{font-size:11px;font-weight:800;margin-top:3px;}
+  .vpc-mg{font-size:8px;opacity:.8;margin-top:1px;}
+  .badge.cat{background:transparent;border:1px solid var(--green);color:var(--green);}
+  .sug{display:flex;justify-content:space-between;align-items:flex-end;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);}
+  .sug .s-lbl{font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+  .sug .s-val{font-size:18px;font-weight:800;color:var(--green);}
+  .mgline{display:flex;justify-content:space-between;font-size:10px;margin-top:6px;}
   /* table */
   .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;}
   table{width:100%;border-collapse:collapse;font-size:13px;min-width:380px;}
@@ -147,12 +154,12 @@ const SHEET_URL='https://docs.google.com/spreadsheets/d/'+SHEET_ID;
 const TABS={
   insumos:741779892, precios:131451656, margenes:1352505801,
   servicios:[
-    {name:'Vestiduras',          gid:818364407, tipo:'Detallado completo (interior + exterior)'},
-    {name:'Vestiduras + Pulido', gid:524982998, tipo:'Detallado completo (interior + exterior)'},
-    {name:'Pulido 3-1',          gid:694418411, tipo:'Pulido 1 paso (3 en 1)'},
-    {name:'Lavado básico',       gid:1954074490,tipo:'Lavado Premium'},
-    {name:'Faros',               gid:1535678238,tipo:'Lavado Premium'},
-    {name:'Pulido + Cerámico',   gid:1746248468,tipo:'Corrección + Cerámico'},
+    {name:'Vestiduras',          gid:818364407, cat:'Interior', precioRow:'Vestiduras manteniemto'},
+    {name:'Vestiduras + Pulido', gid:524982998, cat:'Combo',    precioRow:'Pulido + Vestiduras + motor'},
+    {name:'Pulido 3-1',          gid:694418411, cat:'Exterior', precioRow:'Pulido 3-1'},
+    {name:'Lavado básico',       gid:1954074490,cat:'Exterior', precioRow:'Lavado'},
+    {name:'Faros',               gid:1535678238,cat:'Adicional',precioRow:'Faros'},
+    {name:'Pulido + Cerámico',   gid:1746248468,cat:'Cerámico', precioRow:'1 paso + ceramico 1 año'},
   ]
 };
 const CACHE_KEY='vam_sheet_cache_v1';
@@ -293,32 +300,55 @@ function renderResumen(data){
   </div>`;
 }
 
-function toggleDetail(id){const d=document.getElementById('det-'+id);if(d)d.style.display=d.style.display==='none'?'block':'none';}
+function toggleMats(id){const d=document.getElementById('mats-'+id);if(d)d.style.display=d.style.display==='none'?'block':'none';}
+function norm(s){return (s||'').toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function mgColor(m,tgt){ if(m>=tgt)return 'var(--green)'; if(m>0)return 'var(--yellow)'; return 'var(--red)'; }
 function renderRentab(data){
+  // lookup de precios por vehículo
+  const pmap={};
+  data.precios.forEach(p=>{ if(!p.section) pmap[norm(p.name)]={c:num(p.compacto),m:num(p.mediano),s:num(p.suv),l:num(p.filas)}; });
+  const VK=[['c','Compact.'],['m','Mediano'],['s','SUV'],['l','3 Filas']];
   const el=document.getElementById('v-rentab');
   el.innerHTML=`
-  <div class="note">Desglose real de tu hoja: mano de obra (tarifa × horas) + materiales —incluye el <b>uso de máquinas</b>. Toca <b>"ver desglose"</b> para el detalle por concepto.</div>
+  <div class="note">Cada servicio cruza el <b>precio por vehículo</b> (pestaña SERVICIOS) con su <b>costo real</b> (mano de obra + materiales, incl. 🔧 máquinas). El precio sugerido usa el margen objetivo de tu hoja.</div>
   <div class="cards">
-  ${data.servicios.map((s,i)=>{const e=estado(s);
+  ${data.servicios.map((s,i)=>{
+    const tgt=s.calcular||30;
+    const px=pmap[norm(s.precioRow)]||{c:0,m:0,s:0,l:0};
     const maq=s.mats.find(m=>/m[aá]quin/i.test(m.name));
+    const ganM=px.m-s.costoTotal, mgM=px.m>0?ganM/px.m*100:0;
     return`
     <div class="card">
-      <div class="card-head"><span class="name">${s.name}</span><span class="badge ${e.cls}">${e.txt} · ${s.margen.toFixed(0)}%</span></div>
+      <div class="card-head">
+        <div><span class="badge cat" style="margin-bottom:6px;display:inline-block">${s.cat||''}</span>
+          <div class="name">${s.name}</div></div>
+      </div>
       <div class="card-body">
-        <div class="cost-row"><span class="cost-label">👷 Mano de obra</span><span class="val">${money(s.costoMO)}</span></div>
-        <div class="cost-row"><span class="cost-label">📦 Materiales</span><span class="val">${money(s.costoMat)}</span></div>
-        ${maq?`<div class="cap">incl. 🔧 uso de máquinas: ${money(maq.total)}</div>`:''}
-        <div class="row total"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
-        <div class="row"><span class="lbl">Utilidad</span><span class="val pos">${money(s.utilidad)}</span></div>
-        <div class="row"><span class="lbl">Precio</span><span class="val acc">${money(s.precio)}</span></div>
-        <div class="row"><span class="lbl">Margen · objetivo</span><span class="val">${s.margen.toFixed(0)}% · ${(s.calcular||30).toFixed(0)}%</span></div>
-        <div class="bar"><i style="width:${Math.max(2,Math.min(100,s.margen))}%;background:${barColor(s)}"></i></div>
-        <div class="detail-toggle" onclick="toggleDetail(${i})">ver desglose ▾</div>
-        <div class="detail" id="det-${i}" style="display:none">
-          ${s.labor.length?`<div class="det-h">Mano de obra</div>
-            ${s.labor.map(l=>`<div class="mat-item"><span>${l.name} · ${l.hours}h × ${money(l.rate)}</span><span>${money(l.total)}</span></div>`).join('')}`:''}
-          ${s.mats.length?`<div class="det-h">Materiales y equipo</div>
-            ${s.mats.map(m=>`<div class="mat-item"><span>${/m[aá]quin/i.test(m.name)?'🔧 ':''}${m.name}${m.qty?' ×'+m.qty:''}</span><span>${money(m.total)}</span></div>`).join('')}`:''}
+        <div class="vpg">
+          ${VK.map(([k,lbl])=>{const pr=px[k];const hl=k==='m';
+            if(!pr)return`<div class="vpc"><div class="vpc-lbl">${lbl}</div><div class="vpc-val" style="color:var(--muted)">—</div></div>`;
+            const g=pr-s.costoTotal, mg=g/pr*100, col=mgColor(mg,tgt);
+            return`<div class="vpc ${hl?'active':''}">
+              <div class="vpc-lbl ${hl?'hl':''}">${lbl}${hl?' ★':''}</div>
+              <div class="vpc-val ${hl?'hl':''}">${money(pr)}</div>
+              <div class="vpc-gan" style="color:${col}">${g>=0?'+':''}${money(g)}</div>
+              <div class="vpc-mg" style="color:${col}">${mg.toFixed(0)}%</div></div>`;}).join('')}
+        </div>
+        <div style="margin-top:14px">
+          <div class="cost-row"><span class="cost-label">📦 Insumos <span style="font-size:9px;opacity:.7">(clic)</span></span>
+            <span style="cursor:pointer;font-weight:600" onclick="toggleMats(${i})">${money(s.costoMat)} ▾</span></div>
+          <div id="mats-${i}" style="display:none;background:var(--bg3);border-radius:6px;padding:8px 10px;margin:4px 0">
+            ${s.mats.map(m=>`<div class="mat-item"><span>${/m[aá]quin/i.test(m.name)?'🔧 ':''}${m.name}${m.qty?' ×'+m.qty:''}</span><span>${money(m.total)}</span></div>`).join('')}
+          </div>
+          <div class="cost-row"><span class="cost-label">👷 Mano de obra</span><span style="font-weight:600">${money(s.costoMO)}</span></div>
+          ${s.labor.map(l=>`<div class="mat-item"><span>${l.name} ${l.hours}h × ${money(l.rate)}</span><span>${money(l.total)}</span></div>`).join('')}
+          <div class="row total"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
+        </div>
+        <div class="bar"><i style="width:${Math.max(2,Math.min(100,mgM))}%;background:${mgColor(mgM,tgt)}"></i></div>
+        <div class="mgline"><span style="color:${mgColor(mgM,tgt)};font-weight:700">Margen Mediano: ${mgM.toFixed(0)}%</span><span style="color:var(--muted)">Objetivo: ${tgt.toFixed(0)}%</span></div>
+        <div class="sug">
+          <div><div class="s-lbl">Precio sugerido (${tgt.toFixed(0)}%)</div><div class="s-val">${money(s.precio)}</div></div>
+          <div style="text-align:right"><div class="s-lbl">Ganancia s/sugerido</div><div style="font-size:13px;font-weight:700;color:var(--green)">${money(s.precio-s.costoTotal)}</div></div>
         </div>
       </div>
     </div>`}).join('')}
