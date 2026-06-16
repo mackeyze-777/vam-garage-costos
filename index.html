@@ -444,7 +444,7 @@ async function sync(){
     const now=Date.now();
     localStorage.setItem(CACHE_KEY,JSON.stringify({data,when:now}));
     setStamp('ok',now);
-    if(!document.querySelector('.view.active'))activate('resumen');
+    if(!document.querySelector('.view.active'))activate(initialTab());
   }catch(e){
     setStamp('err');
     const c=localStorage.getItem(CACHE_KEY);
@@ -460,7 +460,10 @@ async function sync(){
   }
   document.getElementById('refresh').style.opacity='1';
 }
+const TAB_IDS=['resumen','rentab','precios','insumos','margenes'];
+function initialTab(){const h=(location.hash||'').replace('#','');return TAB_IDS.includes(h)?h:'resumen';}
 function activate(v){
+  if(location.hash.replace('#','')!==v) try{history.replaceState(null,'','#'+v);}catch(e){}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.v===v));
   document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='v-'+v));
   window.scrollTo({top:0});
@@ -471,7 +474,7 @@ document.getElementById('refresh').addEventListener('click',sync);
 (function(){
   const c=localStorage.getItem(CACHE_KEY);
   if(c){try{const{data,when}=JSON.parse(c);renderAll(data);
-    document.getElementById('loading').style.display='none';activate('resumen');setStamp('ok',when);}catch(e){}}
+    document.getElementById('loading').style.display='none';activate(initialTab());setStamp('ok',when);}catch(e){}}
   sync();
 })();
 </script>
