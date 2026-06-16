@@ -154,12 +154,12 @@ const SHEET_URL='https://docs.google.com/spreadsheets/d/'+SHEET_ID;
 const TABS={
   insumos:741779892, precios:131451656, margenes:1352505801,
   servicios:[
-    {name:'Vestiduras',          gid:818364407, cat:'Interior', precioRow:'Vestiduras manteniemto'},
-    {name:'Vestiduras + Pulido', gid:524982998, cat:'Combo',    precioRow:'Pulido + Vestiduras + motor'},
-    {name:'Pulido 3-1',          gid:694418411, cat:'Exterior', precioRow:'Pulido 3-1'},
-    {name:'Lavado básico',       gid:1954074490,cat:'Exterior', precioRow:'Lavado'},
-    {name:'Faros',               gid:1535678238,cat:'Adicional',precioRow:'Faros'},
-    {name:'Pulido + Cerámico',   gid:1746248468,cat:'Cerámico', precioRow:'1 paso + ceramico 1 año'},
+    {name:'Vestiduras',          gid:818364407, cat:'Interior',   precioRow:'Vestiduras manteniemto'},
+    {name:'Vestiduras + Pulido', gid:524982998, cat:'Pulido',     precioRow:'Pulido + Vestiduras + motor'},
+    {name:'Pulido 3-1',          gid:694418411, cat:'Pulido',     precioRow:'Pulido 3-1'},
+    {name:'Lavado básico',       gid:1954074490,cat:'Adicionales',precioRow:'Lavado'},
+    {name:'Faros',               gid:1535678238,cat:'Adicionales',precioRow:'Faros'},
+    {name:'Pulido + Cerámico',   gid:1746248468,cat:'Cerámico',   precioRow:'1 paso + ceramico 1 año'},
   ]
 };
 const CACHE_KEY='vam_sheet_cache_v1';
@@ -301,18 +301,30 @@ function renderResumen(data){
 }
 
 function toggleMats(id){const d=document.getElementById('mats-'+id);if(d)d.style.display=d.style.display==='none'?'block':'none';}
-function norm(s){return (s||'').toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function norm(s){return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();}
+const CAT_ORDER=['Interior','Pulido','Adicionales','Cer\u00e1mico'];
+const CAT_LBL={Interior:'Interior \u00b7 Vestiduras',Pulido:'Pulido',Adicionales:'Adicionales / Extras',Cer\u00e1mico:'Cer\u00e1mico'};
+function categoryOf(name){
+  const n=norm(name);
+  const sets={
+    Interior:['vestiduras manteniemto','vestiduras avanzado'],
+    Pulido:['pulido 3-1','pulido + vestiduras + motor'],
+    Adicionales:['lavado','faros','motor','cera + descontaminacion','lluvia acida','correcion de pintura'],
+    Ceramico:['ceramico mate 2 anos','1 paso + ceramico 1 ano','2 paso + ceramico 1 ano','1 paso + 3 anos','2 pasos + 3 anos','2 pasos + 5 anos','ceramico a piel','ceramico a plasticos','mantenimiento ceramico']
+  };
+  for(const k in sets){ if(sets[k].some(x=>norm(x)===n)) return k==='Ceramico'?'Cer\u00e1mico':k; }
+  if(/ceramic/.test(n)) return 'Cer\u00e1mico';
+  if(/pulido|correc/.test(n)) return 'Pulido';
+  if(/vestidura/.test(n)) return 'Interior';
+  return 'Adicionales';
+}
 function mgColor(m,tgt){ if(m>=tgt)return 'var(--green)'; if(m>0)return 'var(--yellow)'; return 'var(--red)'; }
 function renderRentab(data){
   // lookup de precios por vehículo
   const pmap={};
   data.precios.forEach(p=>{ if(!p.section) pmap[norm(p.name)]={c:num(p.compacto),m:num(p.mediano),s:num(p.suv),l:num(p.filas)}; });
   const VK=[['c','Compact.'],['m','Mediano'],['s','SUV'],['l','3 Filas']];
-  const el=document.getElementById('v-rentab');
-  el.innerHTML=`
-  <div class="note">Cada servicio cruza el <b>precio por vehículo</b> (pestaña SERVICIOS) con su <b>costo real</b> (mano de obra + materiales, incl. 🔧 máquinas). El precio sugerido usa el margen objetivo de tu hoja.</div>
-  <div class="cards">
-  ${data.servicios.map((s,i)=>{
+  const card=(s,i)=>{
     const tgt=s.calcular||30;
     const px=pmap[norm(s.precioRow)]||{c:0,m:0,s:0,l:0};
     const maq=s.mats.find(m=>/m[aá]quin/i.test(m.name));
@@ -351,25 +363,29 @@ function renderRentab(data){
           <div style="text-align:right"><div class="s-lbl">Ganancia s/sugerido</div><div style="font-size:13px;font-weight:700;color:var(--green)">${money(s.precio-s.costoTotal)}</div></div>
         </div>
       </div>
-    </div>`}).join('')}
-  </div>`;
+    </div>`;};
+  const el=document.getElementById('v-rentab');
+  const idx=data.servicios.map((s,i)=>[s,i]);
+  let html=`<div class="note">Cada servicio cruza el <b>precio por vehículo</b> (pestaña SERVICIOS) con su <b>costo real</b> (mano de obra + materiales, incl. 🔧 máquinas). El precio sugerido usa el margen objetivo de tu hoja.</div>`;
+  for(const k of CAT_ORDER){
+    const grp=idx.filter(([s])=>s.cat===k);
+    if(!grp.length)continue;
+    html+=`<h2 class="section">${CAT_LBL[k]||k}</h2><div class="cards">${grp.map(([s,i])=>card(s,i)).join('')}</div>`;
+  }
+  el.innerHTML=html;
 }
 
 function renderPrecios(data){
-  // agrupar por secciones de la hoja
-  const blocks=[]; let cur={section:'Servicios',items:[]};
-  for(const p of data.precios){
-    if(p.section){ if(cur.items.length)blocks.push(cur); cur={section:p.section,items:[]}; }
-    else cur.items.push(p);
-  }
-  if(cur.items.length)blocks.push(cur);
+  // agrupar por categoría de servicio
+  const groups={}; CAT_ORDER.forEach(k=>groups[k]=[]);
+  data.precios.forEach(p=>{ if(p.section)return; const c=categoryOf(p.name); (groups[c]=groups[c]||[]).push(p); });
   const cell=(lbl,val,hl)=>`<div class="vpc ${hl?'active':''}">
     <div class="vpc-lbl ${hl?'hl':''}">${lbl}${hl?' ★':''}</div>
     <div class="vpc-val ${hl?'hl':''}">${val||'—'}</div></div>`;
-  document.getElementById('v-precios').innerHTML=blocks.map(b=>`
-    <h2 class="section">${b.section}</h2>
+  document.getElementById('v-precios').innerHTML=CAT_ORDER.filter(k=>groups[k]&&groups[k].length).map(k=>`
+    <h2 class="section">${CAT_LBL[k]||k}</h2>
     <div class="cards-sm">
-      ${b.items.map(p=>`<div class="card pcard">
+      ${groups[k].map(p=>`<div class="card pcard">
         <div class="pcard-name">${p.name}</div>
         <div class="vpg">
           ${cell('Compacto',p.compacto)}${cell('Mediano',p.mediano,true)}${cell('SUV',p.suv)}${cell('3 Filas',p.filas)}
