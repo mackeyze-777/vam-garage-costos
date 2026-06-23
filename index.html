@@ -165,15 +165,7 @@
 const SHEET_ID='1UqaOw2jmD24uN8avQisEeKCfYgDPEMtrLIHYhHXXpU0';
 const SHEET_URL='https://docs.google.com/spreadsheets/d/'+SHEET_ID;
 const TABS={
-  insumos:741779892, precios:131451656, margenes:1352505801,
-  servicios:[
-    {name:'Vestiduras',          gid:818364407, cat:'Interior',   precioRow:'Vestiduras manteniemto'},
-    {name:'Vestiduras + Pulido', gid:524982998, cat:'Paquetes',   precioRow:'Pulido + Vestiduras + motor'},
-    {name:'Pulido 3-1',          gid:694418411, cat:'Pulido',     precioRow:'Pulido 3-1'},
-    {name:'Lavado básico',       gid:1954074490,cat:'Adicionales',precioRow:'Lavado'},
-    {name:'Faros',               gid:1535678238,cat:'Adicionales',precioRow:'Faros'},
-    {name:'Pulido + Cerámico',   gid:1746248468,cat:'Cerámico',   precioRow:'1 paso + ceramico 1 año'},
-  ]
+  insumos:741779892, precios:131451656, margenes:1352505801, costeo:777960188
 };
 const CACHE_KEY='vam_sheet_cache_v1';
 const csvUrl=g=>SHEET_URL+'/gviz/tq?tqx=out:csv&gid='+g+'&t='+Date.now();
@@ -247,6 +239,19 @@ function parseDesglose(rows){
   const margen= precio>0 ? (precio-costoTotal)/precio*100 : 0;
   return {costoMO,costoMat,costoTotal,factor,calcular,utilidad,precio,precioServ,labor,mats,margen};
 }
+function pricePct(s){ const p=/%/.test(s||''); const v=num(s); return p? v/100 : v; }
+function parseCosteo(rows){
+  const out=[];
+  for(const r of rows){
+    const name=T(r,0);
+    if(!name||/^VAM GARAGE/i.test(name)||/^NOTA/i.test(name))continue;
+    const tipo=T(r,1), costoTotal=num(r[6]), precio=pricePct(r[7]);
+    if(!tipo && costoTotal===0)continue;   // fila de seccion (CERAMICOS / SERVICIOS NORMALES)
+    const margen=precio>0?(precio-costoTotal)/precio*100:0;
+    out.push({name,cat:tipo,personas:T(r,2),tiempo:T(r,3),costoMO:num(r[4]),costoMat:num(r[5]),costoTotal,precio,margen,notas:T(r,9)});
+  }
+  return out;
+}
 
 /* ---------- fetch ---------- */
 async function fetchTab(gid){
@@ -261,49 +266,51 @@ async function loadAll(){
   data.insumos=parseInsumos(await fetchTab(TABS.insumos));
   data.precios=parsePrecios(await fetchTab(TABS.precios));
   data.margenes=parseMargenes(await fetchTab(TABS.margenes));
-  data.servicios=[];
-  for(const s of TABS.servicios){
-    const d=parseDesglose(await fetchTab(s.gid));
-    data.servicios.push({...s,...d});
-  }
+  data.costeo=parseCosteo(await fetchTab(TABS.costeo));
   return data;
 }
 
 /* ---------- render ---------- */
-function estado(d){
-  const obj=d.calcular||30;
-  if(d.margen>=obj) return {cls:'ok',txt:'Sano'};
-  if(d.margen>=obj*0.6) return {cls:'warn',txt:'Ajustar'};
-  return {cls:'bad',txt:'Corregir'};
-}
-function barColor(d){const o=d.calcular||30; return d.margen>=o?'var(--green)':d.margen>=o*0.6?'var(--yellow)':'var(--red)';}
+const CTGT={'Cerámico':60,'Pulido':50,'Interior':35,'Adicionales':40,'Paquetes':45};
+function catGroup(tipo){const n=norm(tipo);
+  if(/ceramic/.test(n))return'Cerámico';
+  if(/pulido|correc/.test(n))return'Pulido';
+  if(/interior|vestidura/.test(n))return'Interior';
+  if(/paquete/.test(n))return'Paquetes';
+  return'Adicionales';}
+function tgtOf(s){return CTGT[catGroup(s.cat)]||40;}
+function estado(s){const tgt=tgtOf(s);
+  if(s.margen>=tgt) return {cls:'ok',txt:'Sano'};
+  if(s.margen>=tgt*0.6) return {cls:'warn',txt:'Ajustar'};
+  return {cls:'bad',txt:'Corregir'};}
+function barColor(s){const t=tgtOf(s); return s.margen>=t?'var(--green)':s.margen>=t*0.6?'var(--yellow)':'var(--red)';}
 
 function renderResumen(data){
-  const sv=data.servicios;
+  const sv=data.costeo;
   const n=sv.length;
   const avgM=n?sv.reduce((a,s)=>a+s.margen,0)/n:0;
-  const corregir=sv.filter(s=>estado(s).cls!=='ok');
+  const ajustar=sv.filter(s=>estado(s).cls!=='ok');
   const peor=[...sv].sort((a,b)=>a.margen-b.margen)[0];
   const el=document.getElementById('v-resumen');
   el.innerHTML=`
   <h2 class="section">Vista general</h2>
   <div class="kpis">
-    <div class="kpi"><div class="k-label">Servicios con costeo</div><div class="k-value">${n}</div><div class="k-sub">desglose completo en la hoja</div></div>
+    <div class="kpi"><div class="k-label">Servicios costeados</div><div class="k-value">${n}</div><div class="k-sub">mano de obra + materiales</div></div>
     <div class="kpi"><div class="k-label">Insumos registrados</div><div class="k-value">${data.insumos.filter(i=>!i.section).length}</div><div class="k-sub">base de costos</div></div>
-    <div class="kpi"><div class="k-label">Margen promedio</div><div class="k-value" style="color:${avgM>=30?'var(--green)':'var(--yellow)'}">${avgM.toFixed(0)}%</div><div class="k-sub">de los ${n} servicios</div></div>
-    <div class="kpi"><div class="k-label">Por corregir</div><div class="k-value" style="color:${corregir.length?'var(--red)':'var(--green)'}">${corregir.length}</div><div class="k-sub">bajo su margen objetivo</div></div>
+    <div class="kpi"><div class="k-label">Margen promedio</div><div class="k-value" style="color:${avgM>=50?'var(--green)':'var(--yellow)'}">${avgM.toFixed(0)}%</div><div class="k-sub">de los ${n} servicios</div></div>
+    <div class="kpi"><div class="k-label">Para ajustar</div><div class="k-value" style="color:${ajustar.length?'var(--yellow)':'var(--green)'}">${ajustar.length}</div><div class="k-sub">bajo su margen objetivo</div></div>
   </div>
   ${peor?`<h2 class="section">Acción prioritaria</h2>
   <div class="card"><div class="card-head"><span class="name">${peor.name}</span><span class="badge ${estado(peor).cls}">${estado(peor).txt}</span></div>
     <div class="card-body">
-      <div class="row"><span class="lbl">Margen actual</span><span class="val ${peor.margen>=(peor.calcular||30)?'pos':'neg'}">${peor.margen.toFixed(0)}%</span></div>
-      <div class="row"><span class="lbl">Margen objetivo</span><span class="val">${(peor.calcular||30).toFixed(0)}%</span></div>
+      <div class="row"><span class="lbl">Margen actual</span><span class="val ${peor.margen>=tgtOf(peor)?'pos':'neg'}">${peor.margen.toFixed(0)}%</span></div>
+      <div class="row"><span class="lbl">Margen objetivo</span><span class="val">${tgtOf(peor).toFixed(0)}%</span></div>
       <div class="row"><span class="lbl">Costo total</span><span class="val">${money(peor.costoTotal)}</span></div>
-      <div class="row"><span class="lbl">Precio sugerido (hoja)</span><span class="val acc">${money(peor.precio)}</span></div>
+      <div class="row"><span class="lbl">Precio actual</span><span class="val acc">${money(peor.precio)}</span></div>
     </div></div>`:''}
   <h2 class="section">Ranking por margen</h2>
   <div class="cards">
-    ${sv.map(s=>{const e=estado(s);return`
+    ${[...sv].sort((a,b)=>b.margen-a.margen).map(s=>{const e=estado(s);return`
     <div class="card"><div class="card-head"><span class="name">${s.name}</span><span class="badge ${e.cls}">${s.margen.toFixed(0)}%</span></div>
     <div class="card-body">
       <div class="row"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
@@ -335,57 +342,37 @@ function categoryOf(name){
 }
 function mgColor(m,tgt){ if(m>=tgt)return 'var(--green)'; if(m>0)return 'var(--yellow)'; return 'var(--red)'; }
 function renderRentab(data){
-  // lookup de precios por vehículo
-  const pmap={};
-  data.precios.forEach(p=>{ if(!p.section) pmap[norm(p.name)]={c:num(p.compacto),m:num(p.mediano),s:num(p.suv),l:num(p.filas)}; });
-  const VK=[['c','Compact.'],['m','Mediano'],['s','SUV'],['l','3 Filas']];
-  const card=(s,i)=>{
-    const tgt=s.calcular||30;
-    const px=pmap[norm(s.precioRow)]||{c:0,m:0,s:0,l:0};
-    const maq=s.mats.find(m=>/m[aá]quin/i.test(m.name));
-    const ganM=px.m-s.costoTotal, mgM=px.m>0?ganM/px.m*100:0;
+  const sv=data.costeo;
+  const card=(s)=>{
+    const tgt=tgtOf(s), e=estado(s);
+    const meta=[s.cat,s.personas?s.personas+' pers':'',s.tiempo?s.tiempo+'h':''].filter(Boolean).join(' · ');
     return`
     <div class="card">
       <div class="card-head">
-        <div><span class="badge cat" style="margin-bottom:6px;display:inline-block">${s.cat||''}</span>
+        <div><span class="badge cat" style="margin-bottom:6px;display:inline-block">${meta}</span>
           <div class="name">${s.name}</div></div>
+        <span class="badge ${e.cls}">${e.txt}</span>
       </div>
       <div class="card-body">
-        <div class="vpg">
-          ${VK.map(([k,lbl])=>{const pr=px[k];const hl=k==='m';
-            if(!pr)return`<div class="vpc"><div class="vpc-lbl">${lbl}</div><div class="vpc-val" style="color:var(--muted)">—</div></div>`;
-            const g=pr-s.costoTotal, mg=g/pr*100, col=mgColor(mg,tgt);
-            return`<div class="vpc ${hl?'active':''}">
-              <div class="vpc-lbl ${hl?'hl':''}">${lbl}${hl?' ★':''}</div>
-              <div class="vpc-val ${hl?'hl':''}">${money(pr)}</div>
-              <div class="vpc-gan" style="color:${col}">${g>=0?'+':''}${money(g)}</div>
-              <div class="vpc-mg" style="color:${col}">${mg.toFixed(0)}%</div></div>`;}).join('')}
+        <div class="cost-row"><span class="cost-label">👷 Mano de obra</span><span style="font-weight:600">${money(s.costoMO)}</span></div>
+        <div class="cost-row"><span class="cost-label">📦 Materiales (est)</span><span style="font-weight:600">${money(s.costoMat)}</span></div>
+        <div class="row total"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
+        <div class="sug" style="margin-top:10px">
+          <div><div class="s-lbl">Precio actual</div><div class="s-val" style="color:var(--text)">${money(s.precio)}</div></div>
+          <div style="text-align:right"><div class="s-lbl">Ganancia</div><div style="font-size:15px;font-weight:800;color:var(--green)">${money(s.precio-s.costoTotal)}</div></div>
         </div>
-        <div style="margin-top:14px">
-          <div class="cost-row"><span class="cost-label">📦 Insumos <span style="font-size:9px;opacity:.7">(clic)</span></span>
-            <span style="cursor:pointer;font-weight:600" onclick="toggleMats(${i})">${money(s.costoMat)} ▾</span></div>
-          <div id="mats-${i}" style="display:none;background:var(--bg3);border-radius:6px;padding:8px 10px;margin:4px 0">
-            ${s.mats.map(m=>`<div class="mat-item"><span>${/m[aá]quin/i.test(m.name)?'🔧 ':''}${m.name}${m.qty?' ×'+m.qty:''}</span><span>${money(m.total)}</span></div>`).join('')}
-          </div>
-          <div class="cost-row"><span class="cost-label">👷 Mano de obra</span><span style="font-weight:600">${money(s.costoMO)}</span></div>
-          ${s.labor.map(l=>`<div class="mat-item"><span>${l.name} ${l.hours}h × ${money(l.rate)}</span><span>${money(l.total)}</span></div>`).join('')}
-          <div class="row total"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
-        </div>
-        <div class="bar"><i style="width:${Math.max(2,Math.min(100,mgM))}%;background:${mgColor(mgM,tgt)}"></i></div>
-        <div class="mgline"><span style="color:${mgColor(mgM,tgt)};font-weight:700">Margen Mediano: ${mgM.toFixed(0)}%</span><span style="color:var(--muted)">Objetivo: ${tgt.toFixed(0)}%</span></div>
-        <div class="sug">
-          <div><div class="s-lbl">Precio sugerido (${tgt.toFixed(0)}%)</div><div class="s-val">${money(s.precio)}</div></div>
-          <div style="text-align:right"><div class="s-lbl">Ganancia s/sugerido</div><div style="font-size:13px;font-weight:700;color:var(--green)">${money(s.precio-s.costoTotal)}</div></div>
-        </div>
+        <div class="bar"><i style="width:${Math.max(2,Math.min(100,s.margen))}%;background:${barColor(s)}"></i></div>
+        <div class="mgline"><span style="color:${barColor(s)};font-weight:700">Margen: ${s.margen.toFixed(0)}%</span><span style="color:var(--muted)">Objetivo: ${tgt.toFixed(0)}%</span></div>
+        ${s.notas?`<div class="cap" style="margin-top:8px">📝 ${s.notas}</div>`:''}
       </div>
     </div>`;};
   const el=document.getElementById('v-rentab');
-  const idx=data.servicios.map((s,i)=>[s,i]);
-  let html=`<div class="note">Cada servicio cruza el <b>precio por vehículo</b> (pestaña SERVICIOS) con su <b>costo real</b> (mano de obra + materiales, incl. 🔧 máquinas). El precio sugerido usa el margen objetivo de tu hoja.</div>`;
-  for(const k of CAT_ORDER){
-    const grp=idx.filter(([s])=>s.cat===k);
+  let html=`<div class="note">Costo real = mano de obra (2 técnicos $97.50/h ó 1 persona $37.50/h) + materiales estimados de tu BASE DE COSTOS. Precio = vehículo Mediano de tu pestaña de costeo.</div>`;
+  const ORD=['Cerámico','Pulido','Interior','Paquetes','Adicionales'];
+  for(const k of ORD){
+    const grp=sv.filter(s=>catGroup(s.cat)===k);
     if(!grp.length)continue;
-    html+=`<h2 class="section">${CAT_LBL[k]||k}</h2><div class="cards">${grp.map(([s,i])=>card(s,i)).join('')}</div>`;
+    html+=`<h2 class="section">${CAT_LBL[k]||k}</h2><div class="cards">${grp.map(card).join('')}</div>`;
   }
   el.innerHTML=html;
 }
