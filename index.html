@@ -286,7 +286,7 @@ function estado(s){const tgt=tgtOf(s);
 function barColor(s){const t=tgtOf(s); return s.margen>=t?'var(--green)':s.margen>=t*0.6?'var(--yellow)':'var(--red)';}
 
 function renderResumen(data){
-  const sv=data.costeo;
+  const sv=data.costeo||[];
   const n=sv.length;
   const avgM=n?sv.reduce((a,s)=>a+s.margen,0)/n:0;
   const ajustar=sv.filter(s=>estado(s).cls!=='ok');
@@ -342,7 +342,7 @@ function categoryOf(name){
 }
 function mgColor(m,tgt){ if(m>=tgt)return 'var(--green)'; if(m>0)return 'var(--yellow)'; return 'var(--red)'; }
 function renderRentab(data){
-  const sv=data.costeo;
+  const sv=data.costeo||[];
   const card=(s)=>{
     const tgt=tgtOf(s), e=estado(s);
     const meta=[s.cat,s.personas?s.personas+' pers':'',s.tiempo?s.tiempo+'h':''].filter(Boolean).join(' · ');
