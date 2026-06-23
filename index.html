@@ -130,6 +130,14 @@
   @media(prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}
   }
+  /* config box (editable) */
+  .cfgbox{background:var(--bg2);border:1px solid var(--accent);border-radius:10px;padding:14px 16px;margin-bottom:16px;}
+  .cfg-title{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:10px;}
+  .cfg-row{display:flex;flex-wrap:wrap;gap:12px;}
+  .cfg-row label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:130px;font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted2);}
+  .cfg-row input{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px 10px;font-size:16px;font-weight:700;width:100%;}
+  .cfg-row input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,23,138,.25);}
+  .cfg-hint{font-size:10px;color:var(--muted);margin-top:9px;line-height:1.5;}
 </style>
 </head>
 <body>
@@ -245,12 +253,27 @@ function parseCosteo(rows){
   for(const r of rows){
     const name=T(r,0);
     if(!name||/^VAM GARAGE/i.test(name)||/^NOTA/i.test(name))continue;
-    const tipo=T(r,1), costoTotal=num(r[6]), precio=pricePct(r[7]);
-    if(!tipo && costoTotal===0)continue;   // fila de seccion (CERAMICOS / SERVICIOS NORMALES)
-    const margen=precio>0?(precio-costoTotal)/precio*100:0;
-    out.push({name,cat:tipo,personas:T(r,2),tiempo:T(r,3),costoMO:num(r[4]),costoMat:num(r[5]),costoTotal,precio,margen,notas:T(r,9)});
+    const tipo=T(r,1), personas=T(r,2)||'2', tiempo=T(r,3), horas=num(r[3]), mat=num(r[5]), precio=pricePct(r[7]);
+    if(!tipo && horas===0 && precio===0)continue;   // fila de seccion (CERAMICOS / SERVICIOS NORMALES)
+    out.push({name,cat:tipo,personas,tiempo,horas,mat,precio,notas:T(r,9)});  // crudo; los costos se calculan en withCosts()
   }
   return out;
+}
+const CFG_KEY='vam_cfg_v1';
+let CONFIG=Object.assign({r1:37.5,r2:97.5,oh:0},JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));
+function withCosts(items){return (items||[]).map(s=>{
+  const rate=String(s.personas)==='1'?(+CONFIG.r1||0):(+CONFIG.r2||0);
+  const costoMO=Math.round(s.horas*rate);                     // Personas x Horas x tarifa (siempre al día)
+  const costoTotal=costoMO+s.mat+(+CONFIG.oh||0);
+  const margen=s.precio>0?(s.precio-costoTotal)/s.precio*100:0;
+  return Object.assign({},s,{rate,costoMO,costoMat:s.mat,costoTotal,margen});
+});}
+function applyCfg(){
+  CONFIG.r1=+document.getElementById('cfg-r1').value||0;
+  CONFIG.r2=+document.getElementById('cfg-r2').value||0;
+  CONFIG.oh=+document.getElementById('cfg-oh').value||0;
+  localStorage.setItem(CFG_KEY,JSON.stringify(CONFIG));
+  if(window.DATA){renderResumen(window.DATA);renderRentab(window.DATA);renderPrecios(window.DATA);}
 }
 
 /* ---------- fetch ---------- */
@@ -286,7 +309,7 @@ function estado(s){const tgt=tgtOf(s);
 function barColor(s){const t=tgtOf(s); return s.margen>=t?'var(--green)':s.margen>=t*0.6?'var(--yellow)':'var(--red)';}
 
 function renderResumen(data){
-  const sv=data.costeo||[];
+  const sv=withCosts(data.costeo);
   const n=sv.length;
   const avgM=n?sv.reduce((a,s)=>a+s.margen,0)/n:0;
   const ajustar=sv.filter(s=>estado(s).cls!=='ok');
@@ -342,7 +365,7 @@ function categoryOf(name){
 }
 function mgColor(m,tgt){ if(m>=tgt)return 'var(--green)'; if(m>0)return 'var(--yellow)'; return 'var(--red)'; }
 function renderRentab(data){
-  const sv=data.costeo||[];
+  const sv=withCosts(data.costeo);
   const card=(s)=>{
     const tgt=tgtOf(s), e=estado(s);
     const meta=[s.cat,s.personas?s.personas+' pers':'',s.tiempo?s.tiempo+'h':''].filter(Boolean).join(' · ');
@@ -354,8 +377,9 @@ function renderRentab(data){
         <span class="badge ${e.cls}">${e.txt}</span>
       </div>
       <div class="card-body">
-        <div class="cost-row"><span class="cost-label">👷 Mano de obra</span><span style="font-weight:600">${money(s.costoMO)}</span></div>
+        <div class="cost-row"><span class="cost-label">👷 Mano de obra · ${s.personas} pers × ${s.horas}h × ${money(s.rate)}/h</span><span style="font-weight:600">${money(s.costoMO)}</span></div>
         <div class="cost-row"><span class="cost-label">📦 Materiales (est)</span><span style="font-weight:600">${money(s.costoMat)}</span></div>
+        ${(+CONFIG.oh>0)?`<div class="cost-row"><span class="cost-label">🏢 Costo fijo / trabajo</span><span style="font-weight:600">${money(+CONFIG.oh)}</span></div>`:''}
         <div class="row total"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
         <div class="sug" style="margin-top:10px">
           <div><div class="s-lbl">Precio actual</div><div class="s-val" style="color:var(--text)">${money(s.precio)}</div></div>
@@ -367,7 +391,16 @@ function renderRentab(data){
       </div>
     </div>`;};
   const el=document.getElementById('v-rentab');
-  let html=`<div class="note">Costo real = mano de obra (2 técnicos $97.50/h ó 1 persona $37.50/h) + materiales estimados de tu BASE DE COSTOS. Precio = vehículo Mediano de tu pestaña de costeo.</div>`;
+  let html=`<div class="cfgbox">
+    <div class="cfg-title">⚙️ Ajusta aquí — todo se recalcula al instante</div>
+    <div class="cfg-row">
+      <label>Tarifa 1 persona ($/h)<input type="number" id="cfg-r1" value="${CONFIG.r1}" onchange="applyCfg()"></label>
+      <label>Tarifa 2 personas ($/h)<input type="number" id="cfg-r2" value="${CONFIG.r2}" onchange="applyCfg()"></label>
+      <label>Costo fijo por trabajo ($)<input type="number" id="cfg-oh" value="${CONFIG.oh}" onchange="applyCfg()"></label>
+    </div>
+    <div class="cfg-hint">Mano de obra = Personas × Horas × tarifa. El "costo fijo por trabajo" es tu overhead (renta, luz, etc.) repartido en cada trabajo — ponlo y se suma al costo de todos.</div>
+  </div>
+  <div class="note">Costo real = mano de obra + materiales + costo fijo. Precio = vehículo Mediano de tu pestaña de costeo. La mano de obra ya NO usa el número fijo de la hoja: se calcula con las tarifas de arriba.</div>`;
   const ORD=['Cerámico','Pulido','Interior','Paquetes','Adicionales'];
   for(const k of ORD){
     const grp=sv.filter(s=>catGroup(s.cat)===k);
@@ -378,7 +411,7 @@ function renderRentab(data){
 }
 
 function renderPrecios(data){
-  const sv=data.costeo||[];
+  const sv=withCosts(data.costeo);
   const cardP=(s)=>`<div class="card pcard">
     <div class="pcard-name">${s.name}</div>
     <div class="sug" style="margin-top:8px;border-top:none;padding-top:0">
@@ -417,6 +450,7 @@ function renderMargenes(data){
 }
 
 function renderAll(data){
+  window.DATA=data;
   renderResumen(data);renderRentab(data);renderPrecios(data);renderInsumos(data);renderMargenes(data);
 }
 
