@@ -139,8 +139,8 @@
   .cfg-row input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,23,138,.25);}
   .cfg-hint{font-size:10px;color:var(--muted);margin-top:9px;line-height:1.5;}
   /* edicion por servicio */
-  .svc-edit{display:flex;gap:8px;margin-bottom:12px;}
-  .svc-edit label{display:flex;flex-direction:column;gap:3px;flex:1;font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
+  .svc-edit{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+  .svc-edit label{display:flex;flex-direction:column;gap:3px;flex:1;min-width:90px;font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
   .svc-edit select,.svc-edit input{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 8px;font-size:13px;font-weight:700;width:100%;}
   .svc-edit select:focus,.svc-edit input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,23,138,.25);}
 </style>
@@ -265,22 +265,24 @@ function parseCosteo(rows){
   return out;
 }
 const CFG_KEY='vam_cfg_v1', OV_KEY='vam_ov_v1';
-let CONFIG=Object.assign({r1:37.5,r2:97.5,oh:0},JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));
+let CONFIG=Object.assign({r1:37.5,r2:97.5,oh:0,tgt:60},JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));
 let OV=JSON.parse(localStorage.getItem(OV_KEY)||'{}');   // ajustes por servicio: {nombre:{personas,horas}}
 function withCosts(items){return (items||[]).map(s=>{
   const ov=OV[s.name]||{};
   const personas=ov.personas!=null?ov.personas:s.personas;
   const horas=ov.horas!=null?ov.horas:s.horas;
+  const precio=ov.precio!=null?ov.precio:s.precio;
   const rate=String(personas)==='1'?(+CONFIG.r1||0):(+CONFIG.r2||0);
   const costoMO=Math.round(horas*rate);                     // Personas x Horas x tarifa (siempre al día)
   const costoTotal=costoMO+s.mat+(+CONFIG.oh||0);
-  const margen=s.precio>0?(s.precio-costoTotal)/s.precio*100:0;
-  return Object.assign({},s,{personas,horas,rate,costoMO,costoMat:s.mat,costoTotal,margen});
+  const margen=precio>0?(precio-costoTotal)/precio*100:0;
+  return Object.assign({},s,{personas,horas,precio,rate,costoMO,costoMat:s.mat,costoTotal,margen});
 });}
 function applyCfg(){
   CONFIG.r1=+document.getElementById('cfg-r1').value||0;
   CONFIG.r2=+document.getElementById('cfg-r2').value||0;
   CONFIG.oh=+document.getElementById('cfg-oh').value||0;
+  CONFIG.tgt=+document.getElementById('cfg-tgt').value||0;
   localStorage.setItem(CFG_KEY,JSON.stringify(CONFIG));
   if(window.DATA){renderResumen(window.DATA);renderRentab(window.DATA);renderPrecios(window.DATA);}
 }
@@ -383,6 +385,7 @@ function renderRentab(data){
   const sv=withCosts(data.costeo);
   const card=(s)=>{
     const tgt=tgtOf(s), e=estado(s);
+    const tg=+CONFIG.tgt||0, sug=(tg>0&&tg<100)?Math.round(s.costoTotal/(1-tg/100)):0;
     const meta=[s.cat,s.personas?s.personas+' pers':'',s.tiempo?s.tiempo+'h':''].filter(Boolean).join(' · ');
     return`
     <div class="card">
@@ -397,17 +400,18 @@ function renderRentab(data){
             <option value="1"${String(s.personas)==='1'?' selected':''}>1 persona</option>
             <option value="2"${String(s.personas)==='2'?' selected':''}>2 personas</option></select></label>
           <label>⏱ Horas<input type="number" step="0.25" min="0" value="${s.horas}" onchange="setOv('${s.name}','horas',this.value)"></label>
+          <label>💵 Precio que cobras<input type="number" step="50" min="0" value="${s.precio}" onchange="setOv('${s.name}','precio',this.value)"></label>
         </div>
         <div class="cost-row"><span class="cost-label">👷 Mano de obra · ${s.personas} pers × ${s.horas}h × ${money(s.rate)}/h</span><span style="font-weight:600">${money(s.costoMO)}</span></div>
         <div class="cost-row"><span class="cost-label">📦 Materiales (est)</span><span style="font-weight:600">${money(s.costoMat)}</span></div>
         ${(+CONFIG.oh>0)?`<div class="cost-row"><span class="cost-label">🏢 Costo fijo / trabajo</span><span style="font-weight:600">${money(+CONFIG.oh)}</span></div>`:''}
         <div class="row total"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
-        <div class="sug" style="margin-top:10px">
-          <div><div class="s-lbl">Precio actual</div><div class="s-val" style="color:var(--text)">${money(s.precio)}</div></div>
-          <div style="text-align:right"><div class="s-lbl">Ganancia</div><div style="font-size:15px;font-weight:800;color:var(--green)">${money(s.precio-s.costoTotal)}</div></div>
-        </div>
         <div class="bar"><i style="width:${Math.max(2,Math.min(100,s.margen))}%;background:${barColor(s)}"></i></div>
-        <div class="mgline"><span style="color:${barColor(s)};font-weight:700">Margen: ${s.margen.toFixed(0)}%</span><span style="color:var(--muted)">Objetivo: ${tgt.toFixed(0)}%</span></div>
+        <div class="mgline"><span style="color:${barColor(s)};font-weight:700">Margen actual: ${s.margen.toFixed(0)}%</span><span style="color:var(--muted)">con tu precio de ${money(s.precio)}</span></div>
+        <div class="sug" style="margin-top:10px">
+          <div><div class="s-lbl">💰 Cobra para ${tg.toFixed(0)}% de margen</div><div class="s-val">${sug?money(sug):'—'}</div></div>
+          <div style="text-align:right"><div class="s-lbl">Ganancia</div><div style="font-size:14px;font-weight:700;color:var(--green)">${sug?money(sug-s.costoTotal):''}</div></div>
+        </div>
         ${s.notas?`<div class="cap" style="margin-top:8px">📝 ${s.notas}</div>`:''}
       </div>
     </div>`;};
@@ -418,8 +422,9 @@ function renderRentab(data){
       <label>Tarifa 1 persona ($/h)<input type="number" id="cfg-r1" value="${CONFIG.r1}" onchange="applyCfg()"></label>
       <label>Tarifa 2 personas ($/h)<input type="number" id="cfg-r2" value="${CONFIG.r2}" onchange="applyCfg()"></label>
       <label>Costo fijo por trabajo ($)<input type="number" id="cfg-oh" value="${CONFIG.oh}" onchange="applyCfg()"></label>
+      <label>Margen objetivo (%)<input type="number" id="cfg-tgt" value="${CONFIG.tgt}" onchange="applyCfg()"></label>
     </div>
-    <div class="cfg-hint">Mano de obra = Personas × Horas × tarifa. El "costo fijo por trabajo" es tu overhead (renta, luz, etc.) repartido en cada trabajo — ponlo y se suma al costo de todos.</div>
+    <div class="cfg-hint">Mano de obra = Personas × Horas × tarifa. El "costo fijo por trabajo" es tu overhead repartido en cada trabajo. El "margen objetivo" define el 💰 precio que deberías cobrar (aparece en cada tarjeta).</div>
   </div>
   <div class="note">Cambia <b>Personas u Horas</b> en cada tarjeta y el costo + margen se recalculan al instante.<br>Margen: 🟢 sano (arriba del objetivo de su categoría) · 🟡 cerca · 🔴 bajo. El objetivo aparece en cada tarjeta.</div>`;
   const ORD=['Cerámico','Pulido','Interior','Paquetes','Adicionales'];
