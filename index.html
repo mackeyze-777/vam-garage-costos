@@ -378,21 +378,21 @@ function renderRentab(data){
 }
 
 function renderPrecios(data){
-  // agrupar por categoría de servicio
-  const groups={}; CAT_ORDER.forEach(k=>groups[k]=[]);
-  data.precios.forEach(p=>{ if(p.section)return; const c=categoryOf(p.name); (groups[c]=groups[c]||[]).push(p); });
-  const cell=(lbl,val,hl)=>`<div class="vpc ${hl?'active':''}">
-    <div class="vpc-lbl ${hl?'hl':''}">${lbl}${hl?' ★':''}</div>
-    <div class="vpc-val ${hl?'hl':''}">${val||'—'}</div></div>`;
-  document.getElementById('v-precios').innerHTML=CAT_ORDER.filter(k=>groups[k]&&groups[k].length).map(k=>`
-    <h2 class="section">${CAT_LBL[k]||k}</h2>
-    <div class="cards-sm">
-      ${groups[k].map(p=>`<div class="card pcard">
-        <div class="pcard-name">${p.name}</div>
-        <div class="vpg">
-          ${cell('Compacto',p.compacto)}${cell('Mediano',p.mediano,true)}${cell('SUV',p.suv)}${cell('3 Filas',p.filas)}
-        </div></div>`).join('')}
-    </div>`).join('');
+  const sv=data.costeo||[];
+  const cardP=(s)=>`<div class="card pcard">
+    <div class="pcard-name">${s.name}</div>
+    <div class="sug" style="margin-top:8px;border-top:none;padding-top:0">
+      <div><div class="s-lbl">Precio de venta</div><div class="s-val" style="color:var(--accent)">${money(s.precio)}</div></div>
+      <div style="text-align:right"><div class="s-lbl">Margen</div><div style="font-size:16px;font-weight:800;color:${barColor(s)}">${s.margen.toFixed(0)}%</div></div>
+    </div></div>`;
+  const ORD=['Cerámico','Pulido','Interior','Paquetes','Adicionales'];
+  let html=`<div class="note">Lista única de precios de venta (vehículo Mediano), tomada de tu pestaña de costeo — la misma que usa Rentabilidad. Sin contradicciones.</div>`;
+  for(const k of ORD){
+    const grp=sv.filter(s=>catGroup(s.cat)===k);
+    if(!grp.length)continue;
+    html+=`<h2 class="section">${CAT_LBL[k]||k}</h2><div class="cards-sm">${grp.map(cardP).join('')}</div>`;
+  }
+  document.getElementById('v-precios').innerHTML=html;
 }
 
 function renderInsumos(data){
