@@ -406,11 +406,12 @@ function renderRentab(data){
         <div class="cost-row"><span class="cost-label">📦 Materiales (est)</span><span style="font-weight:600">${money(s.costoMat)}</span></div>
         ${(+CONFIG.oh>0)?`<div class="cost-row"><span class="cost-label">🏢 Costo fijo / trabajo</span><span style="font-weight:600">${money(+CONFIG.oh)}</span></div>`:''}
         <div class="row total"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
+        <div class="cost-row"><span class="cost-label">💵 Tu precio</span><span style="font-weight:700">${money(s.precio)}</span></div>
+        <div class="cost-row"><span class="cost-label" style="color:${(s.precio-s.costoTotal)>=0?'var(--green)':'var(--red)'}">💸 Tu ganancia (precio − costo)</span><span style="font-weight:800;color:${(s.precio-s.costoTotal)>=0?'var(--green)':'var(--red)'}">${money(s.precio-s.costoTotal)}</span></div>
         <div class="bar"><i style="width:${Math.max(2,Math.min(100,s.margen))}%;background:${barColor(s)}"></i></div>
-        <div class="mgline"><span style="color:${barColor(s)};font-weight:700">Margen actual: ${s.margen.toFixed(0)}%</span><span style="color:var(--muted)">con tu precio de ${money(s.precio)}</span></div>
-        <div class="sug" style="margin-top:10px">
-          <div><div class="s-lbl">💰 Cobra para ${tg.toFixed(0)}% de margen</div><div class="s-val">${sug?money(sug):'—'}</div></div>
-          <div style="text-align:right"><div class="s-lbl">Ganancia</div><div style="font-size:14px;font-weight:700;color:var(--green)">${sug?money(sug-s.costoTotal):''}</div></div>
+        <div class="mgline"><span style="color:${barColor(s)};font-weight:700">Margen: ${s.margen.toFixed(0)}%</span><span style="color:var(--muted)">Objetivo: ${tgt.toFixed(0)}%</span></div>
+        <div class="sug" style="margin-top:10px;border-top:1px dashed var(--border)">
+          <div><div class="s-lbl">💰 Para ${tg.toFixed(0)}% de margen, cobra</div><div class="s-val">${sug?money(sug):'—'}</div></div>
         </div>
         ${s.notas?`<div class="cap" style="margin-top:8px">📝 ${s.notas}</div>`:''}
       </div>
