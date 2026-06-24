@@ -301,12 +301,17 @@ async function fetchTab(gid){
   if(/<html|<!DOCTYPE/i.test(txt.slice(0,200))) throw new Error('no-public');
   return parseCSV(txt);
 }
+// servicios agregados desde el código (no están en la hoja todavía)
+const EXTRA_SERVICIOS=[
+  {name:'Pulido + aplicación de cera',cat:'Pulido',personas:'2',tiempo:'3.75',horas:3.75,mat:235,precio:1600,notas:'Pulido 1 paso (3h) + cera (45 min)'}
+];
 async function loadAll(){
   const data={};
   data.insumos=parseInsumos(await fetchTab(TABS.insumos));
   data.precios=parsePrecios(await fetchTab(TABS.precios));
   data.margenes=parseMargenes(await fetchTab(TABS.margenes));
   data.costeo=parseCosteo(await fetchTab(TABS.costeo));
+  EXTRA_SERVICIOS.forEach(e=>{ if(!data.costeo.some(s=>norm(s.name)===norm(e.name))) data.costeo.push(Object.assign({},e)); });
   return data;
 }
 
