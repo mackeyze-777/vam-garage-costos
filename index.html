@@ -264,8 +264,8 @@ function parseCosteo(rows){
   }
   return out;
 }
-const CFG_KEY='vam_cfg_v1', OV_KEY='vam_ov_v1';
-let CONFIG=Object.assign({r1:37.5,r2:97.5,oh:0,tgt:60},JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));
+const CFG_KEY='vam_cfg_v2', OV_KEY='vam_ov_v1';
+let CONFIG=Object.assign({r1:37.5,r2:97.5,ohHora:35,tgt:60},JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));
 let OV=JSON.parse(localStorage.getItem(OV_KEY)||'{}');   // ajustes por servicio: {nombre:{personas,horas}}
 function withCosts(items){return (items||[]).map(s=>{
   const ov=OV[s.name]||{};
@@ -274,14 +274,15 @@ function withCosts(items){return (items||[]).map(s=>{
   const precio=ov.precio!=null?ov.precio:s.precio;
   const rate=String(personas)==='1'?(+CONFIG.r1||0):(+CONFIG.r2||0);
   const costoMO=Math.round(horas*rate);                     // Personas x Horas x tarifa (siempre al día)
-  const costoTotal=costoMO+s.mat+(+CONFIG.oh||0);
+  const oh=Math.round(horas*(+CONFIG.ohHora||0));           // overhead repartido por HORA (justo con trabajos rápidos)
+  const costoTotal=costoMO+s.mat+oh;
   const margen=precio>0?(precio-costoTotal)/precio*100:0;
-  return Object.assign({},s,{personas,horas,precio,rate,costoMO,costoMat:s.mat,costoTotal,margen});
+  return Object.assign({},s,{personas,horas,precio,rate,costoMO,costoMat:s.mat,oh,costoTotal,margen});
 });}
 function applyCfg(){
   CONFIG.r1=+document.getElementById('cfg-r1').value||0;
   CONFIG.r2=+document.getElementById('cfg-r2').value||0;
-  CONFIG.oh=+document.getElementById('cfg-oh').value||0;
+  CONFIG.ohHora=+document.getElementById('cfg-ohh').value||0;
   CONFIG.tgt=+document.getElementById('cfg-tgt').value||0;
   localStorage.setItem(CFG_KEY,JSON.stringify(CONFIG));
   if(window.DATA){renderResumen(window.DATA);renderRentab(window.DATA);renderPrecios(window.DATA);}
@@ -409,7 +410,7 @@ function renderRentab(data){
         </div>
         <div class="cost-row"><span class="cost-label">👷 Mano de obra · ${s.personas} pers × ${s.horas}h × ${money(s.rate)}/h</span><span style="font-weight:600">${money(s.costoMO)}</span></div>
         <div class="cost-row"><span class="cost-label">📦 Materiales (est)</span><span style="font-weight:600">${money(s.costoMat)}</span></div>
-        ${(+CONFIG.oh>0)?`<div class="cost-row"><span class="cost-label">🏢 Costo fijo / trabajo</span><span style="font-weight:600">${money(+CONFIG.oh)}</span></div>`:''}
+        ${(+CONFIG.ohHora>0)?`<div class="cost-row"><span class="cost-label">🏢 Costo fijo · ${s.horas}h × ${money(+CONFIG.ohHora)}/h</span><span style="font-weight:600">${money(s.oh)}</span></div>`:''}
         <div class="row total"><span class="lbl">Costo total</span><span class="val">${money(s.costoTotal)}</span></div>
         <div class="cost-row"><span class="cost-label">💵 Tu precio</span><span style="font-weight:700">${money(s.precio)}</span></div>
         <div class="cost-row"><span class="cost-label" style="color:${(s.precio-s.costoTotal)>=0?'var(--green)':'var(--red)'}">💸 Tu ganancia (precio − costo)</span><span style="font-weight:800;color:${(s.precio-s.costoTotal)>=0?'var(--green)':'var(--red)'}">${money(s.precio-s.costoTotal)}</span></div>
@@ -427,10 +428,10 @@ function renderRentab(data){
     <div class="cfg-row">
       <label>Tarifa 1 persona ($/h)<input type="number" id="cfg-r1" value="${CONFIG.r1}" onchange="applyCfg()"></label>
       <label>Tarifa 2 personas ($/h)<input type="number" id="cfg-r2" value="${CONFIG.r2}" onchange="applyCfg()"></label>
-      <label>Costo fijo por trabajo ($)<input type="number" id="cfg-oh" value="${CONFIG.oh}" onchange="applyCfg()"></label>
+      <label>Costo fijo por HORA ($/h)<input type="number" id="cfg-ohh" value="${CONFIG.ohHora}" onchange="applyCfg()"></label>
       <label>Margen objetivo (%)<input type="number" id="cfg-tgt" value="${CONFIG.tgt}" onchange="applyCfg()"></label>
     </div>
-    <div class="cfg-hint">Mano de obra = Personas × Horas × tarifa. El "costo fijo por trabajo" es tu overhead repartido en cada trabajo. El "margen objetivo" define el 💰 precio que deberías cobrar (aparece en cada tarjeta).</div>
+    <div class="cfg-hint">Mano de obra = Personas × Horas × tarifa. El "costo fijo por hora" reparte tu overhead (renta, luz, ads…) según las horas de cada trabajo — justo: un lavado rápido carga menos que un cerámico de 11h. El "margen objetivo" define el 💰 precio que deberías cobrar.</div>
   </div>
   <div class="note">Cambia <b>Personas u Horas</b> en cada tarjeta y el costo + margen se recalculan al instante.<br>Margen: 🟢 sano (arriba del objetivo de su categoría) · 🟡 cerca · 🔴 bajo. El objetivo aparece en cada tarjeta.</div>`;
   const ORD=['Cerámico','Pulido','Interior','Paquetes','Adicionales'];
